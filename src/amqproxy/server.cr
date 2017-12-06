@@ -6,20 +6,17 @@ require "./upstream"
 
 module AMQProxy
   class Server
-    @upstream_url : String
-    @default_prefetch : UInt16
     @closing = false
 
-    def initialize(config : Hash(String, String))
-      @upstream_url = config["upstream"].to_s
-      @default_prefetch = config.fetch("defaultPrefetch", "0").to_u16
-      @socket = uninitialized TCPServer
-      puts "Proxy upstream: #{config["upstream"]}"
-    end
-
-    def listen(address : String, port : Int)
+    def initialize(address : String, port : Int, config : Hash(String, String))
       @socket = TCPServer.new(address, port)
       puts "Proxy listening on #{@socket.local_address}"
+      @pool = Pool(Upstream).new(config["maxConnections"].to_i) do
+        Upstream.new(config["upstream"], config.fetch("defaultPrefetch", "0").to_u16)
+      end
+    end
+
+    def listen
       until @closing
         if client = @socket.accept?
           print "Client connection accepted from ", client.remote_address, "\n"
@@ -30,10 +27,7 @@ module AMQProxy
       end
     end
 
-    def listen_tls(address : String, port : Int, cert_path : String, key_path : String)
-      @socket = TCPServer.new(address, port)
-      puts "Proxy listening on #{@socket.local_address} (TLS)"
-
+    def listen_tls(cert_path : String, key_path : String)
       context = OpenSSL::SSL::Context::Server.new
       context.private_key = key_path
       context.certificate_chain = cert_path
@@ -56,21 +50,22 @@ module AMQProxy
 
     def close
       @closing = true
-      @socket.close if @socket
+      @socket.close
     end
 
     def handle_connection(socket)
       client = Client.new(socket)
-      upstream = Upstream.new(@upstream_url, @default_prefetch)
-      loop do
-        idx, frame = Channel.select([upstream.next_frame, client.next_frame])
-        case idx
-        when 0 # Upstream
-          break if frame.nil?
-          client.write frame.to_slice
-        when 1 # Client
-          break if frame.nil?
-          upstream.write frame.to_slice
+      @pool.borrow(vhost, user, password) do |upstream|
+        loop do
+          idx, frame = Channel.select([upstream.next_frame, client.next_frame])
+          case idx
+          when 0 # Upstream
+            break if frame.nil?
+            client.write frame.to_slice
+          when 1 # Client
+            break if frame.nil?
+            upstream.write frame.to_slice
+          end
         end
       end
     rescue ex : Errno | IO::Error | OpenSSL::SSL::Error

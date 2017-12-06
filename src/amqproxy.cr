@@ -39,7 +39,7 @@ Signal::INT.trap &shutdown
 Signal::TERM.trap &shutdown
 listen = config["listen"]
 if listen["certificateChain"]?
-    server.listen_tls(listen["address"], listen["port"].to_i,
+  server.listen_tls(listen["address"], listen["port"].to_i,
                       listen["certificateChain"], listen["privateKey"])
 else
   server.listen(listen["address"], listen["port"].to_i)
