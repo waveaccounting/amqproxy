@@ -1,0 +1,2 @@
+#!/bin/sh
+/app/bin/amqproxy -l 0.0.0.0 -p 5673 $CLOUDAMQP_URL
