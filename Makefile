@@ -7,6 +7,9 @@ COMMIT_HASH := $(shell git rev-parse HEAD | cut -c 1-7)
 BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 DIFF_SIZE = $(shell cat Dockerfile.diff | wc -l | tr -d '[[:space:]]')
 
+help:
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+
 build:
 	docker build -t ${IMAGE_NAME}:${VERSION}--${BRANCH} .
 
